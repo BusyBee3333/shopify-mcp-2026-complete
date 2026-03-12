@@ -1,0 +1,27 @@
+{
+  "name": "mcp-server-shopify",
+  "version": "1.0.0",
+  "description": "Production-quality MCP server for Shopify Admin REST API 2024-01 — 17 tools covering Products, Orders, Customers, Inventory, Collections",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-server-shopify": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:http": "MCP_TRANSPORT=http node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": ["mcp", "shopify", "ecommerce", "admin-api", "model-context-protocol"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.0"
+  }
+}
