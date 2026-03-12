@@ -182,6 +182,13 @@ src/
 - **Responses:** Both `content` (text fallback) and `structuredContent` (typed JSON) in every response
 - **Transport:** stdio (default) + Streamable HTTP (set `MCP_TRANSPORT=http`)
 
+## Resources
+
+- [Shopify Admin REST API Reference](https://shopify.dev/docs/api/admin-rest)
+- [Shopify GraphQL Admin API](https://shopify.dev/docs/api/admin-graphql)
+- [Create a Custom App in Shopify](https://help.shopify.com/en/manual/apps/app-types/custom-apps)
+- [MCP Protocol Spec](https://modelcontextprotocol.io)
+
 ## License
 
 MIT
