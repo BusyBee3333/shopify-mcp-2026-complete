@@ -52,6 +52,31 @@ const CreateOrderSchema = z.object({
   }).optional().describe("Shipping address"),
 });
 
+const CancelOrderSchema = z.object({
+  order_id: z.string().describe("Shopify order ID to cancel"),
+  reason: z.enum(["customer", "fraud", "inventory", "declined", "other"]).optional().default("other").describe("Cancellation reason"),
+  email: z.boolean().optional().default(false).describe("Send cancellation email to customer"),
+  restock: z.boolean().optional().default(true).describe("Restock inventory items"),
+  note: z.string().optional().describe("Staff note about the cancellation"),
+  refund: z.object({
+    shipping: z.object({ full_refund: z.boolean().optional() }).optional(),
+    refund_line_items: z.array(z.object({
+      line_item_id: z.number(),
+      quantity: z.number(),
+      restock_type: z.enum(["no_restock", "cancel", "return", "legacy_restock"]).optional(),
+    })).optional(),
+  }).optional().describe("Optional refund to issue alongside cancellation"),
+});
+
+const CloseOrderSchema = z.object({
+  order_id: z.string().describe("Shopify order ID to close"),
+});
+
+const GetOrderTransactionsSchema = z.object({
+  order_id: z.string().describe("Shopify order ID"),
+  transaction_id: z.string().optional().describe("Filter to a specific transaction ID"),
+});
+
 const UpdateOrderSchema = z.object({
   order_id: z.string().describe("Shopify order ID"),
   note: z.string().optional().describe("Updated order note"),
@@ -237,6 +262,95 @@ function getToolDefinitions(): ToolDefinition[] {
         openWorldHint: false,
       },
     },
+    {
+      name: "cancel_order",
+      title: "Cancel Order",
+      description:
+        "Cancel a Shopify order. Optionally specify a reason, whether to restock items, and whether to send a cancellation email. Optionally include a refund. Returns the cancelled order.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order_id: { type: "string", description: "Shopify order ID" },
+          reason: { type: "string", enum: ["customer", "fraud", "inventory", "declined", "other"], description: "Cancellation reason" },
+          email: { type: "boolean", description: "Send cancellation email to customer" },
+          restock: { type: "boolean", description: "Restock inventory items (default: true)" },
+          note: { type: "string", description: "Staff note" },
+        },
+        required: ["order_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number" },
+          cancelled_at: { type: "string" },
+          cancel_reason: { type: "string" },
+          financial_status: { type: "string" },
+        },
+        required: ["id"],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    {
+      name: "close_order",
+      title: "Close Order",
+      description:
+        "Close a fulfilled Shopify order. Closing an order archives it and marks it as completed without cancelling it. Useful for manually closing orders that have been fulfilled outside Shopify. Returns the closed order.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order_id: { type: "string", description: "Shopify order ID to close" },
+        },
+        required: ["order_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number" },
+          closed_at: { type: "string" },
+          status: { type: "string" },
+        },
+        required: ["id"],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    {
+      name: "get_order_transactions",
+      title: "Get Order Transactions",
+      description:
+        "Get all payment transactions for a Shopify order. Returns authorization, capture, refund, and void transactions with amounts, gateway, status, and timestamps. Use when reviewing payment history for an order.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order_id: { type: "string", description: "Shopify order ID" },
+          transaction_id: { type: "string", description: "Optional: filter to a specific transaction" },
+        },
+        required: ["order_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: { type: "object", properties: { count: { type: "number" } } },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
   ];
 }
 
@@ -321,6 +435,69 @@ function getToolHandlers(client: ShopifyClient): Record<string, ToolHandler> {
       return {
         content: [{ type: "text", text: JSON.stringify(order, null, 2) }],
         structuredContent: order,
+      };
+    },
+
+    cancel_order: async (args) => {
+      const { order_id, ...params } = CancelOrderSchema.parse(args);
+      const body: Record<string, unknown> = {};
+      if (params.reason) body.reason = params.reason;
+      if (params.email !== undefined) body.email = params.email;
+      if (params.restock !== undefined) body.restock = params.restock;
+      if (params.note) body.note = params.note;
+      if (params.refund) body.refund = params.refund;
+
+      const data = await logger.time("tool.cancel_order", () =>
+        client.post<{ order: ShopifyOrder }>(`/orders/${order_id}/cancel.json`, body)
+      , { tool: "cancel_order", order_id });
+
+      const order = (data as { order: ShopifyOrder }).order;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(order, null, 2) }],
+        structuredContent: order,
+      };
+    },
+
+    close_order: async (args) => {
+      const { order_id } = CloseOrderSchema.parse(args);
+      const data = await logger.time("tool.close_order", () =>
+        client.post<{ order: ShopifyOrder }>(`/orders/${order_id}/close.json`, {})
+      , { tool: "close_order", order_id });
+
+      const order = (data as { order: ShopifyOrder }).order;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(order, null, 2) }],
+        structuredContent: order,
+      };
+    },
+
+    get_order_transactions: async (args) => {
+      const { order_id, transaction_id } = GetOrderTransactionsSchema.parse(args);
+      let endpoint = `/orders/${order_id}/transactions.json`;
+      if (transaction_id) {
+        endpoint = `/orders/${order_id}/transactions/${transaction_id}.json`;
+        const data = await logger.time("tool.get_order_transactions", () =>
+          client.get<{ transaction: unknown }>(endpoint)
+        , { tool: "get_order_transactions", order_id });
+        const tx = (data as { transaction: unknown }).transaction;
+        const response = { data: [tx], meta: { count: 1 } };
+        return {
+          content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+          structuredContent: response,
+        };
+      }
+
+      const data = await logger.time("tool.get_order_transactions", () =>
+        client.get<{ transactions: unknown[] }>(endpoint)
+      , { tool: "get_order_transactions", order_id });
+      const transactions = (data as { transactions: unknown[] }).transactions || [];
+      const response = { data: transactions, meta: { count: transactions.length } };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
       };
     },
   };

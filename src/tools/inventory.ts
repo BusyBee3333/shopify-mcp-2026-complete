@@ -13,6 +13,17 @@ const GetInventorySchema = z.object({
   limit: z.number().min(1).max(250).optional().default(50).describe("Number of results (default 50)"),
 });
 
+const AdjustInventorySchema = z.object({
+  location_id: z.string().describe("Shopify location ID"),
+  inventory_item_id: z.string().describe("Inventory item ID (from variant.inventory_item_id)"),
+  available_adjustment: z.number().describe("Delta adjustment to apply (positive to add, negative to remove)"),
+});
+
+const ListInventoryLocationsSchema = z.object({
+  limit: z.number().min(1).max(250).optional().default(50).describe("Number of results (1-250, default 50)"),
+  page_info: z.string().optional().describe("Cursor for next page"),
+});
+
 const UpdateInventorySchema = z.object({
   location_id: z.string().describe("Shopify location ID where inventory is stored"),
   inventory_item_id: z.string().describe("Inventory item ID (from variant.inventory_item_id)"),
@@ -97,6 +108,67 @@ function getToolDefinitions(): ToolDefinition[] {
         openWorldHint: false,
       },
     },
+    {
+      name: "adjust_inventory",
+      title: "Adjust Inventory Level",
+      description:
+        "Adjust inventory by a relative delta at a specific location (e.g. +5 or -3). Unlike update_inventory which sets an absolute value, this adds or subtracts from current stock. Returns the updated inventory level.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          location_id: { type: "string", description: "Shopify location ID" },
+          inventory_item_id: { type: "string", description: "Inventory item ID (from variant.inventory_item_id)" },
+          available_adjustment: { type: "number", description: "Delta to apply (positive = add, negative = remove)" },
+        },
+        required: ["location_id", "inventory_item_id", "available_adjustment"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          inventory_item_id: { type: "number" },
+          location_id: { type: "number" },
+          available: { type: "number" },
+          updated_at: { type: "string" },
+        },
+        required: ["inventory_item_id", "location_id"],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    {
+      name: "list_inventory_locations",
+      title: "List Inventory Locations",
+      description:
+        "List all locations in a Shopify store where inventory is tracked. Returns location ID, name, address, and active status. Location IDs are required for inventory level operations.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Number of results (1-250, default 50)" },
+          page_info: { type: "string", description: "Cursor for next page" },
+        },
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: {
+            type: "object",
+            properties: { count: { type: "number" }, hasMore: { type: "boolean" } },
+          },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
   ];
 }
 
@@ -142,6 +214,71 @@ function getToolHandlers(client: ShopifyClient): Record<string, ToolHandler> {
       return {
         content: [{ type: "text", text: JSON.stringify(level, null, 2) }],
         structuredContent: level,
+      };
+    },
+
+    adjust_inventory: async (args) => {
+      const params = AdjustInventorySchema.parse(args);
+
+      // Shopify uses /inventory_levels/adjust.json for relative adjustments
+      const data = await logger.time("tool.adjust_inventory", () =>
+        client.post<{ inventory_level: ShopifyInventoryLevel }>("/inventory_levels/adjust.json", {
+          location_id: Number(params.location_id),
+          inventory_item_id: Number(params.inventory_item_id),
+          available_adjustment: params.available_adjustment,
+        })
+      , { tool: "adjust_inventory" });
+
+      const level = (data as { inventory_level: ShopifyInventoryLevel }).inventory_level;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(level, null, 2) }],
+        structuredContent: level,
+      };
+    },
+
+    list_inventory_locations: async (args) => {
+      const params = ListInventoryLocationsSchema.parse(args);
+
+      interface ShopifyLocation {
+        id: number;
+        name?: string;
+        address1?: string;
+        address2?: string | null;
+        city?: string;
+        province?: string;
+        country?: string;
+        zip?: string;
+        phone?: string;
+        active?: boolean;
+        created_at?: string;
+        updated_at?: string;
+      }
+
+      let result: { data: ShopifyLocation[]; nextPageInfo?: string };
+
+      if (params.page_info) {
+        result = await logger.time("tool.list_inventory_locations", () =>
+          client.paginateFromCursor<ShopifyLocation>("/locations.json", params.page_info!, params.limit)
+        , { tool: "list_inventory_locations" });
+      } else {
+        result = await logger.time("tool.list_inventory_locations", () =>
+          client.paginatedGet<ShopifyLocation>("/locations.json", {}, params.limit)
+        , { tool: "list_inventory_locations" });
+      }
+
+      const response = {
+        data: result.data,
+        meta: {
+          count: result.data.length,
+          hasMore: !!result.nextPageInfo,
+          ...(result.nextPageInfo ? { nextPageInfo: result.nextPageInfo } : {}),
+        },
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
       };
     },
   };

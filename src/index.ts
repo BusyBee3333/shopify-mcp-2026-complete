@@ -15,16 +15,32 @@ const MCP_VERSION = "1.0.0";
 // TOOL GROUP LOADERS (lazy imports)
 // ============================================
 async function loadAllTools(client: ShopifyClient) {
-  const [health, products, orders, customers, inventory, collections] = await Promise.all([
+  const [
+    health, products, orders, customers, inventory, collections,
+    fulfillments, refunds, discounts, metafields, draftOrders,
+    webhooks, shipping, blogs,
+  ] = await Promise.all([
     import("./tools/health.js").then((m) => m.getTools(client)),
     import("./tools/products.js").then((m) => m.getTools(client)),
     import("./tools/orders.js").then((m) => m.getTools(client)),
     import("./tools/customers.js").then((m) => m.getTools(client)),
     import("./tools/inventory.js").then((m) => m.getTools(client)),
     import("./tools/collections.js").then((m) => m.getTools(client)),
+    import("./tools/fulfillments.js").then((m) => m.getTools(client)),
+    import("./tools/refunds.js").then((m) => m.getTools(client)),
+    import("./tools/discounts.js").then((m) => m.getTools(client)),
+    import("./tools/metafields.js").then((m) => m.getTools(client)),
+    import("./tools/draft_orders.js").then((m) => m.getTools(client)),
+    import("./tools/webhooks.js").then((m) => m.getTools(client)),
+    import("./tools/shipping.js").then((m) => m.getTools(client)),
+    import("./tools/blogs.js").then((m) => m.getTools(client)),
   ]);
 
-  return [health, products, orders, customers, inventory, collections];
+  return [
+    health, products, orders, customers, inventory, collections,
+    fulfillments, refunds, discounts, metafields, draftOrders,
+    webhooks, shipping, blogs,
+  ];
 }
 
 // ============================================
