@@ -15,14 +15,8 @@ const MCP_VERSION = "1.0.0";
 // TOOL GROUP LOADERS (lazy imports)
 // ============================================
 async function loadAllTools(client: ShopifyClient) {
-  const [
-    health, products, orders, customers, inventory, collections,
-    fulfillments, refunds, discounts, metafields, draftOrders,
-    webhooks, shipping, blogs,
-    // Round 2: new tool groups
-    giftCards, themes, abandonedCheckouts, locations, metaobjects,
-    markets, scriptTags, events, pages,
-  ] = await Promise.all([
+  const toolGroups = await Promise.all([
+    // === Round 1: Core ===
     import("./tools/health.js").then((m) => m.getTools(client)),
     import("./tools/products.js").then((m) => m.getTools(client)),
     import("./tools/orders.js").then((m) => m.getTools(client)),
@@ -37,7 +31,7 @@ async function loadAllTools(client: ShopifyClient) {
     import("./tools/webhooks.js").then((m) => m.getTools(client)),
     import("./tools/shipping.js").then((m) => m.getTools(client)),
     import("./tools/blogs.js").then((m) => m.getTools(client)),
-    // Round 2
+    // === Round 2: Extended ===
     import("./tools/gift_cards.js").then((m) => m.getTools(client)),
     import("./tools/themes.js").then((m) => m.getTools(client)),
     import("./tools/abandoned_checkouts.js").then((m) => m.getTools(client)),
@@ -47,16 +41,40 @@ async function loadAllTools(client: ShopifyClient) {
     import("./tools/script_tags.js").then((m) => m.getTools(client)),
     import("./tools/events.js").then((m) => m.getTools(client)),
     import("./tools/pages.js").then((m) => m.getTools(client)),
+    // === Round 3: Full API Coverage ===
+    import("./tools/price_rules.js").then((m) => m.getTools(client)),
+    import("./tools/custom_collections.js").then((m) => m.getTools(client)),
+    import("./tools/smart_collections.js").then((m) => m.getTools(client)),
+    import("./tools/product_variants.js").then((m) => m.getTools(client)),
+    import("./tools/customer_addresses.js").then((m) => m.getTools(client)),
+    import("./tools/transactions.js").then((m) => m.getTools(client)),
+    import("./tools/shop.js").then((m) => m.getTools(client)),
+    import("./tools/redirects.js").then((m) => m.getTools(client)),
+    import("./tools/articles.js").then((m) => m.getTools(client)),
+    import("./tools/order_risks.js").then((m) => m.getTools(client)),
+    import("./tools/fulfillment_orders.js").then((m) => m.getTools(client)),
+    import("./tools/fulfillment_services.js").then((m) => m.getTools(client)),
+    import("./tools/inventory_items.js").then((m) => m.getTools(client)),
+    import("./tools/carrier_services.js").then((m) => m.getTools(client)),
+    import("./tools/payment_gateways.js").then((m) => m.getTools(client)),
+    import("./tools/marketing_events.js").then((m) => m.getTools(client)),
+    import("./tools/storefront_access_tokens.js").then((m) => m.getTools(client)),
+    import("./tools/application_charges.js").then((m) => m.getTools(client)),
+    import("./tools/resource_feedback.js").then((m) => m.getTools(client)),
+    import("./tools/customer_saved_searches.js").then((m) => m.getTools(client)),
+    import("./tools/reports.js").then((m) => m.getTools(client)),
+    import("./tools/tender_transactions.js").then((m) => m.getTools(client)),
+    import("./tools/disputes.js").then((m) => m.getTools(client)),
+    import("./tools/payouts.js").then((m) => m.getTools(client)),
+    import("./tools/graphql.js").then((m) => m.getTools(client)),
+    import("./tools/shipping_zones.js").then((m) => m.getTools(client)),
+    import("./tools/product_listings.js").then((m) => m.getTools(client)),
+    import("./tools/collection_listings.js").then((m) => m.getTools(client)),
+    import("./tools/bulk_operations.js").then((m) => m.getTools(client)),
+    import("./tools/access_scopes.js").then((m) => m.getTools(client)),
   ]);
 
-  return [
-    health, products, orders, customers, inventory, collections,
-    fulfillments, refunds, discounts, metafields, draftOrders,
-    webhooks, shipping, blogs,
-    // Round 2
-    giftCards, themes, abandonedCheckouts, locations, metaobjects,
-    markets, scriptTags, events, pages,
-  ];
+  return toolGroups;
 }
 
 // ============================================
