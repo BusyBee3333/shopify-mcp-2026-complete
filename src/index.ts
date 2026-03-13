@@ -19,6 +19,9 @@ async function loadAllTools(client: ShopifyClient) {
     health, products, orders, customers, inventory, collections,
     fulfillments, refunds, discounts, metafields, draftOrders,
     webhooks, shipping, blogs,
+    // Round 2: new tool groups
+    giftCards, themes, abandonedCheckouts, locations, metaobjects,
+    markets, scriptTags, events, pages,
   ] = await Promise.all([
     import("./tools/health.js").then((m) => m.getTools(client)),
     import("./tools/products.js").then((m) => m.getTools(client)),
@@ -34,12 +37,25 @@ async function loadAllTools(client: ShopifyClient) {
     import("./tools/webhooks.js").then((m) => m.getTools(client)),
     import("./tools/shipping.js").then((m) => m.getTools(client)),
     import("./tools/blogs.js").then((m) => m.getTools(client)),
+    // Round 2
+    import("./tools/gift_cards.js").then((m) => m.getTools(client)),
+    import("./tools/themes.js").then((m) => m.getTools(client)),
+    import("./tools/abandoned_checkouts.js").then((m) => m.getTools(client)),
+    import("./tools/locations.js").then((m) => m.getTools(client)),
+    import("./tools/metaobjects.js").then((m) => m.getTools(client)),
+    import("./tools/markets.js").then((m) => m.getTools(client)),
+    import("./tools/script_tags.js").then((m) => m.getTools(client)),
+    import("./tools/events.js").then((m) => m.getTools(client)),
+    import("./tools/pages.js").then((m) => m.getTools(client)),
   ]);
 
   return [
     health, products, orders, customers, inventory, collections,
     fulfillments, refunds, discounts, metafields, draftOrders,
     webhooks, shipping, blogs,
+    // Round 2
+    giftCards, themes, abandonedCheckouts, locations, metaobjects,
+    markets, scriptTags, events, pages,
   ];
 }
 

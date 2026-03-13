@@ -1,5 +1,7 @@
 // Orders tools — Shopify Admin API 2024-01
-// Covers: list_orders, get_order, create_order, update_order
+// Covers: list_orders, get_order, create_order, update_order,
+//         cancel_order, close_order, get_order_transactions,
+//         list_order_risks, get_order_risk, create_order_risk
 
 import { z } from "zod";
 import type { ShopifyClient } from "../client.js";
@@ -92,6 +94,25 @@ const UpdateOrderSchema = z.object({
     first_name: z.string().optional(),
     last_name: z.string().optional(),
   }).optional().describe("Updated shipping address"),
+});
+
+const ListOrderRisksSchema = z.object({
+  order_id: z.string().describe("Shopify order ID"),
+});
+
+const GetOrderRiskSchema = z.object({
+  order_id: z.string().describe("Shopify order ID"),
+  risk_id: z.string().describe("Order risk ID"),
+});
+
+const CreateOrderRiskSchema = z.object({
+  order_id: z.string().describe("Shopify order ID"),
+  message: z.string().describe("Risk message describing the suspicious activity (shown to merchant)"),
+  recommendation: z.enum(["cancel", "investigate", "accept"]).describe("Recommended action: cancel (high risk), investigate (medium risk), or accept (low risk/no risk)"),
+  score: z.number().min(0).max(1).describe("Risk score from 0.0 (no risk) to 1.0 (maximum risk)"),
+  source: z.string().optional().describe("Name of the risk provider (e.g. your app name)"),
+  cause_cancel: z.boolean().optional().default(false).describe("Whether this risk should trigger automatic order cancellation"),
+  display: z.boolean().optional().default(true).describe("Whether to display this risk assessment to the merchant"),
 });
 
 // === Tool Definitions ===
@@ -351,6 +372,79 @@ function getToolDefinitions(): ToolDefinition[] {
         openWorldHint: false,
       },
     },
+    {
+      name: "list_order_risks",
+      title: "List Order Risks",
+      description:
+        "List all fraud risk assessments for a specific Shopify order. Returns the risk score (0-1), recommendation (cancel/investigate/accept), risk message, and source. Use to review fraud signals on suspicious orders before fulfilling them.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order_id: { type: "string", description: "Shopify order ID" },
+        },
+        required: ["order_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: { type: "object", properties: { count: { type: "number" } } },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    {
+      name: "get_order_risk",
+      title: "Get Order Risk",
+      description:
+        "Get a specific fraud risk assessment for an order. Returns the risk score, recommendation, message, source, and whether it should trigger cancellation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order_id: { type: "string", description: "Shopify order ID" },
+          risk_id: { type: "string", description: "Order risk ID" },
+        },
+        required: ["order_id", "risk_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number" }, order_id: { type: "number" }, score: { type: "number" },
+          recommendation: { type: "string" }, message: { type: "string" }, source: { type: "string" },
+        },
+        required: ["id"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    {
+      name: "create_order_risk",
+      title: "Create Order Risk",
+      description:
+        "Add a fraud risk assessment to a Shopify order. Specify a risk score (0-1), recommendation (cancel/investigate/accept), and message explaining the risk. Use from fraud-detection apps to flag suspicious orders for merchant review.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order_id: { type: "string", description: "Shopify order ID" },
+          message: { type: "string", description: "Risk message (shown to merchant)" },
+          recommendation: { type: "string", enum: ["cancel", "investigate", "accept"], description: "Recommended action" },
+          score: { type: "number", description: "Risk score 0.0 (safe) to 1.0 (high risk)" },
+          source: { type: "string", description: "Risk provider name" },
+          cause_cancel: { type: "boolean", description: "Trigger automatic cancellation (default: false)" },
+          display: { type: "boolean", description: "Show to merchant (default: true)" },
+        },
+        required: ["order_id", "message", "recommendation", "score"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number" }, order_id: { type: "number" }, score: { type: "number" },
+          recommendation: { type: "string" },
+        },
+        required: ["id"],
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
   ];
 }
 
@@ -498,6 +592,52 @@ function getToolHandlers(client: ShopifyClient): Record<string, ToolHandler> {
       return {
         content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
         structuredContent: response,
+      };
+    },
+
+    list_order_risks: async (args) => {
+      const { order_id } = ListOrderRisksSchema.parse(args);
+      const data = await logger.time("tool.list_order_risks", () =>
+        client.get<{ risks: unknown[] }>(`/orders/${order_id}/risks.json`)
+      , { tool: "list_order_risks", order_id });
+
+      const risks = (data as { risks: unknown[] }).risks || [];
+      const response = { data: risks, meta: { count: risks.length } };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
+      };
+    },
+
+    get_order_risk: async (args) => {
+      const { order_id, risk_id } = GetOrderRiskSchema.parse(args);
+      const data = await logger.time("tool.get_order_risk", () =>
+        client.get<{ risk: unknown }>(`/orders/${order_id}/risks/${risk_id}.json`)
+      , { tool: "get_order_risk", order_id, risk_id });
+
+      const risk = (data as { risk: unknown }).risk;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(risk, null, 2) }],
+        structuredContent: risk as Record<string, unknown>,
+      };
+    },
+
+    create_order_risk: async (args) => {
+      const { order_id, ...riskData } = CreateOrderRiskSchema.parse(args);
+      const data = await logger.time("tool.create_order_risk", () =>
+        client.post<{ risk: unknown }>(
+          `/orders/${order_id}/risks.json`,
+          { risk: riskData }
+        )
+      , { tool: "create_order_risk", order_id });
+
+      const risk = (data as { risk: unknown }).risk;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(risk, null, 2) }],
+        structuredContent: risk as Record<string, unknown>,
       };
     },
   };

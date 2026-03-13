@@ -1,5 +1,7 @@
 // Products tools — Shopify Admin API 2024-01
-// Covers: list_products, get_product, create_product, update_product
+// Covers: list_products, get_product, create_product, update_product,
+//         delete_product, add_product_image, list_product_variants,
+//         get_product_metafields, create_product_metafield, list_product_media
 
 import { z } from "zod";
 import type { ShopifyClient } from "../client.js";
@@ -69,6 +71,28 @@ const UpdateProductSchema = z.object({
   product_type: z.string().optional().describe("Updated product type"),
   status: z.enum(["active", "draft", "archived"]).optional().describe("Update status (use 'active' to publish, 'draft' to unpublish)"),
   tags: z.string().optional().describe("Updated comma-separated tags"),
+});
+
+const GetProductMetafieldsSchema = z.object({
+  product_id: z.string().describe("Shopify product ID"),
+  namespace: z.string().optional().describe("Filter by metafield namespace"),
+  key: z.string().optional().describe("Filter by metafield key"),
+  limit: z.number().min(1).max(250).optional().default(50).describe("Number of results (1-250, default 50)"),
+  page_info: z.string().optional().describe("Cursor for next page"),
+});
+
+const CreateProductMetafieldSchema = z.object({
+  product_id: z.string().describe("Shopify product ID"),
+  namespace: z.string().describe("Metafield namespace (e.g. 'custom', 'my_fields')"),
+  key: z.string().describe("Metafield key (e.g. 'care_instructions', 'material')"),
+  value: z.string().describe("Metafield value"),
+  type: z.string().describe("Metafield type (e.g. 'single_line_text_field', 'multi_line_text_field', 'number_integer', 'number_decimal', 'json', 'url', 'color', 'date', 'boolean', 'product_reference', 'file_reference')"),
+  description: z.string().optional().describe("Optional description for the metafield"),
+});
+
+const ListProductMediaSchema = z.object({
+  product_id: z.string().describe("Shopify product ID"),
+  limit: z.number().min(1).max(250).optional().default(50).describe("Number of results (1-250, default 50)"),
 });
 
 // === Tool Definitions ===
@@ -350,6 +374,82 @@ function getToolDefinitions(): ToolDefinition[] {
         openWorldHint: false,
       },
     },
+    {
+      name: "get_product_metafields",
+      title: "Get Product Metafields",
+      description:
+        "List all metafields attached to a specific Shopify product. Returns namespace, key, value, type, and timestamps for each metafield. Optionally filter by namespace or key. Use to retrieve custom product data like care instructions, materials, certifications, or any structured custom content.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          product_id: { type: "string", description: "Shopify product ID" },
+          namespace: { type: "string", description: "Filter by metafield namespace" },
+          key: { type: "string", description: "Filter by metafield key" },
+          limit: { type: "number", description: "Number of results (1-250, default 50)" },
+          page_info: { type: "string", description: "Cursor for next page" },
+        },
+        required: ["product_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: { type: "object", properties: { count: { type: "number" }, hasMore: { type: "boolean" } } },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    {
+      name: "create_product_metafield",
+      title: "Create Product Metafield",
+      description:
+        "Create a new metafield on a Shopify product. Metafields allow you to store custom data like care instructions, materials, certifications, or any structured content. Specify the namespace, key, value, and type. Common types: single_line_text_field, multi_line_text_field, number_integer, number_decimal, json, url, color, date, boolean.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          product_id: { type: "string", description: "Shopify product ID" },
+          namespace: { type: "string", description: "Metafield namespace (e.g. 'custom')" },
+          key: { type: "string", description: "Metafield key (e.g. 'care_instructions')" },
+          value: { type: "string", description: "Metafield value" },
+          type: { type: "string", description: "Value type (e.g. 'single_line_text_field', 'json', 'number_integer')" },
+          description: { type: "string", description: "Optional description" },
+        },
+        required: ["product_id", "namespace", "key", "value", "type"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number" }, namespace: { type: "string" }, key: { type: "string" },
+          value: { type: "string" }, type: { type: "string" },
+        },
+        required: ["id"],
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    {
+      name: "list_product_media",
+      title: "List Product Media",
+      description:
+        "List all media (images, 3D models, videos) attached to a Shopify product. Returns media type, preview image URL, media content URL, status, and creation timestamps. Use to audit product media or retrieve media IDs for programmatic management.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          product_id: { type: "string", description: "Shopify product ID" },
+          limit: { type: "number", description: "Number of results (1-250, default 50)" },
+        },
+        required: ["product_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: { type: "object", properties: { count: { type: "number" } } },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
   ];
 }
 
@@ -492,6 +592,85 @@ function getToolHandlers(client: ShopifyClient): Record<string, ToolHandler> {
           hasMore: !!result.nextPageInfo,
           ...(result.nextPageInfo ? { nextPageInfo: result.nextPageInfo } : {}),
         },
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
+      };
+    },
+
+    get_product_metafields: async (args) => {
+      const { product_id, namespace, key, limit, page_info } = GetProductMetafieldsSchema.parse(args);
+      let result: { data: unknown[]; nextPageInfo?: string };
+
+      if (page_info) {
+        result = await logger.time("tool.get_product_metafields", () =>
+          client.paginateFromCursor<unknown>(
+            `/products/${product_id}/metafields.json`,
+            page_info,
+            limit
+          )
+        , { tool: "get_product_metafields" });
+      } else {
+        const extraParams: Record<string, string> = {};
+        if (namespace) extraParams.namespace = namespace;
+        if (key) extraParams.key = key;
+
+        result = await logger.time("tool.get_product_metafields", () =>
+          client.paginatedGet<unknown>(
+            `/products/${product_id}/metafields.json`,
+            extraParams,
+            limit
+          )
+        , { tool: "get_product_metafields", product_id });
+      }
+
+      const response = {
+        data: result.data,
+        meta: {
+          count: result.data.length,
+          hasMore: !!result.nextPageInfo,
+          ...(result.nextPageInfo ? { nextPageInfo: result.nextPageInfo } : {}),
+        },
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
+      };
+    },
+
+    create_product_metafield: async (args) => {
+      const { product_id, ...metafieldData } = CreateProductMetafieldSchema.parse(args);
+      const data = await logger.time("tool.create_product_metafield", () =>
+        client.post<{ metafield: unknown }>(
+          `/products/${product_id}/metafields.json`,
+          { metafield: metafieldData }
+        )
+      , { tool: "create_product_metafield", product_id });
+
+      const metafield = (data as { metafield: unknown }).metafield;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(metafield, null, 2) }],
+        structuredContent: metafield as Record<string, unknown>,
+      };
+    },
+
+    list_product_media: async (args) => {
+      const { product_id, limit } = ListProductMediaSchema.parse(args);
+      const result = await logger.time("tool.list_product_media", () =>
+        client.paginatedGet<unknown>(
+          `/products/${product_id}/media.json`,
+          {},
+          limit
+        )
+      , { tool: "list_product_media", product_id });
+
+      const response = {
+        data: result.data,
+        meta: { count: result.data.length },
       };
 
       return {

@@ -421,6 +421,122 @@ function getToolHandlers(client: ShopifyClient): Record<string, ToolHandler> {
         structuredContent: customer,
       };
     },
+
+    search_customers: async (args) => {
+      const { query, limit, order } = SearchCustomersSchema.parse(args);
+      const params: Record<string, string> = { query };
+      if (limit) params.limit = String(limit);
+      if (order) params.order = order;
+
+      const data = await logger.time("tool.search_customers", () =>
+        client.get<{ customers: ShopifyCustomer[] }>(
+          `/customers/search.json?${new URLSearchParams(params)}`
+        )
+      , { tool: "search_customers" });
+
+      const customers = (data as { customers: ShopifyCustomer[] }).customers || [];
+      const response = { data: customers, meta: { count: customers.length } };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
+      };
+    },
+
+    get_customer_orders: async (args) => {
+      const { customer_id, limit, status, page_info } = GetCustomerOrdersSchema.parse(args);
+      let result: { data: unknown[]; nextPageInfo?: string };
+
+      if (page_info) {
+        result = await logger.time("tool.get_customer_orders", () =>
+          client.paginateFromCursor<unknown>(
+            `/customers/${customer_id}/orders.json`,
+            page_info,
+            limit
+          )
+        , { tool: "get_customer_orders" });
+      } else {
+        const extraParams: Record<string, string> = {};
+        if (status) extraParams.status = status;
+
+        result = await logger.time("tool.get_customer_orders", () =>
+          client.paginatedGet<unknown>(
+            `/customers/${customer_id}/orders.json`,
+            extraParams,
+            limit
+          )
+        , { tool: "get_customer_orders", customer_id });
+      }
+
+      const response = {
+        data: result.data,
+        meta: {
+          count: result.data.length,
+          hasMore: !!result.nextPageInfo,
+          ...(result.nextPageInfo ? { nextPageInfo: result.nextPageInfo } : {}),
+        },
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
+      };
+    },
+
+    send_customer_invite: async (args) => {
+      const { customer_id, ...inviteData } = SendCustomerInviteSchema.parse(args);
+      const body: Record<string, unknown> = {};
+      if (inviteData.to) body.to = inviteData.to;
+      if (inviteData.from) body.from = inviteData.from;
+      if (inviteData.bcc) body.bcc = inviteData.bcc;
+      if (inviteData.subject) body.subject = inviteData.subject;
+      if (inviteData.custom_message) body.custom_message = inviteData.custom_message;
+
+      await logger.time("tool.send_customer_invite", () =>
+        client.post<unknown>(
+          `/customers/${customer_id}/send_invite.json`,
+          { customer_invite: body }
+        )
+      , { tool: "send_customer_invite", customer_id });
+
+      const response = { customer_id, sent: true, to: inviteData.to };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
+        structuredContent: response,
+      };
+    },
+
+    add_customer_tags: async (args) => {
+      const { customer_id, tags } = AddCustomerTagsSchema.parse(args);
+
+      // First, fetch current tags to merge
+      const existingData = await logger.time("tool.add_customer_tags.fetch", () =>
+        client.get<{ customer: ShopifyCustomer }>(`/customers/${customer_id}.json`)
+      , { tool: "add_customer_tags", customer_id });
+
+      const existing = (existingData as { customer: ShopifyCustomer }).customer;
+      const existingTags = existing.tags
+        ? existing.tags.split(",").map((t) => t.trim()).filter(Boolean)
+        : [];
+
+      // Merge new tags (deduplicate)
+      const merged = Array.from(new Set([...existingTags, ...tags])).join(", ");
+
+      const data = await logger.time("tool.add_customer_tags.update", () =>
+        client.put<{ customer: ShopifyCustomer }>(
+          `/customers/${customer_id}.json`,
+          { customer: { tags: merged } }
+        )
+      , { tool: "add_customer_tags", customer_id });
+
+      const customer = (data as { customer: ShopifyCustomer }).customer;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(customer, null, 2) }],
+        structuredContent: customer,
+      };
+    },
   };
 }
 
