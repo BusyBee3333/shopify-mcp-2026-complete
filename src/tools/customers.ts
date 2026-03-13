@@ -228,6 +228,99 @@ function getToolDefinitions(): ToolDefinition[] {
         openWorldHint: false,
       },
     },
+    {
+      name: "search_customers",
+      title: "Search Customers",
+      description:
+        "Search Shopify customers using a full-text query. Supports field-specific searches like 'email:test@example.com', 'tag:vip', 'first_name:Jane'. More precise than list_customers query param — use for finding specific customers by email, name, phone, or tags. Returns matching customers with contact info and order stats.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query (e.g. 'email:test@example.com', 'tag:vip', 'first_name:Jane')" },
+          limit: { type: "number", description: "Number of results (1-250, default 50)" },
+          order: { type: "string", description: "Sort order (e.g. 'last_order_date DESC')" },
+        },
+        required: ["query"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: { type: "object", properties: { count: { type: "number" } } },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    {
+      name: "get_customer_orders",
+      title: "Get Customer Orders",
+      description:
+        "List all orders for a specific Shopify customer. Returns order number, financial status, fulfillment status, total price, and line items. Supports filtering by order status and cursor-based pagination. Use to review a customer's purchase history.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          customer_id: { type: "string", description: "Shopify customer ID" },
+          limit: { type: "number", description: "Number of results (1-250, default 50)" },
+          status: { type: "string", enum: ["open", "closed", "cancelled", "any"], description: "Filter by order status" },
+          page_info: { type: "string", description: "Cursor for next page" },
+        },
+        required: ["customer_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          data: { type: "array" },
+          meta: { type: "object", properties: { count: { type: "number" }, hasMore: { type: "boolean" }, nextPageInfo: { type: "string" } } },
+        },
+        required: ["data", "meta"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    {
+      name: "send_customer_invite",
+      title: "Send Customer Account Invite",
+      description:
+        "Send an account activation (invite) email to a Shopify customer so they can set their password and access their account. Useful for newly created customers who haven't set up a password yet. Optionally customize the subject, message, sender, and BCC recipients.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          customer_id: { type: "string", description: "Shopify customer ID" },
+          to: { type: "string", description: "Override recipient email (defaults to customer's email)" },
+          from: { type: "string", description: "Sender email (defaults to store email)" },
+          bcc: { type: "array", items: { type: "string" }, description: "BCC recipients" },
+          subject: { type: "string", description: "Custom email subject" },
+          custom_message: { type: "string", description: "Custom message body" },
+        },
+        required: ["customer_id"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: { customer_id: { type: "string" }, sent: { type: "boolean" }, to: { type: "string" } },
+        required: ["sent"],
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    {
+      name: "add_customer_tags",
+      title: "Add Customer Tags",
+      description:
+        "Add one or more tags to a Shopify customer without removing existing tags. Tags are used for customer segmentation, marketing lists, and discount targeting. Returns the customer with updated full tag list.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          customer_id: { type: "string", description: "Shopify customer ID" },
+          tags: { type: "array", items: { type: "string" }, description: "Tags to add (existing tags are preserved)" },
+        },
+        required: ["customer_id", "tags"],
+      },
+      outputSchema: {
+        type: "object",
+        properties: { id: { type: "number" }, tags: { type: "string" } },
+        required: ["id"],
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
   ];
 }
 

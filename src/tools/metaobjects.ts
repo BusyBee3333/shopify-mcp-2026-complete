@@ -494,7 +494,7 @@ function getToolHandlers(client: ShopifyClient): Record<string, ToolHandler> {
 
       return {
         content: [{ type: "text", text: JSON.stringify(metaobjectDefinition, null, 2) }],
-        structuredContent: metaobjectDefinition as Record<string, unknown>,
+        structuredContent: metaobjectDefinition as unknown as Record<string, unknown>,
       };
     },
 
