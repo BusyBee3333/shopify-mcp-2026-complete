@@ -1,5 +1,6 @@
 // Customers tools — Shopify Admin API 2024-01
-// Covers: list_customers, get_customer, create_customer, update_customer
+// Covers: list_customers, get_customer, create_customer, update_customer,
+//         search_customers, get_customer_orders, send_customer_invite, add_customer_tags
 
 import { z } from "zod";
 import type { ShopifyClient } from "../client.js";
@@ -51,6 +52,33 @@ const UpdateCustomerSchema = z.object({
   phone: z.string().optional().describe("Updated phone number"),
   note: z.string().optional().describe("Updated notes"),
   tags: z.string().optional().describe("Updated comma-separated tags"),
+});
+
+const SearchCustomersSchema = z.object({
+  query: z.string().describe("Search query — supports email, name, phone, address. Examples: 'email:test@example.com', 'first_name:Jane last_name:Doe', 'tag:vip'"),
+  limit: z.number().min(1).max(250).optional().default(50).describe("Number of results (1-250, default 50)"),
+  order: z.string().optional().describe("Sort order (e.g. 'last_order_date DESC', 'email ASC')"),
+});
+
+const GetCustomerOrdersSchema = z.object({
+  customer_id: z.string().describe("Shopify customer ID"),
+  limit: z.number().min(1).max(250).optional().default(50).describe("Number of results (1-250, default 50)"),
+  status: z.enum(["open", "closed", "cancelled", "any"]).optional().default("any").describe("Filter by order status"),
+  page_info: z.string().optional().describe("Cursor for next page"),
+});
+
+const SendCustomerInviteSchema = z.object({
+  customer_id: z.string().describe("Shopify customer ID"),
+  to: z.string().email().optional().describe("Override recipient email (defaults to customer's email)"),
+  from: z.string().email().optional().describe("Sender email (defaults to store email)"),
+  bcc: z.array(z.string().email()).optional().describe("BCC recipient email addresses"),
+  subject: z.string().optional().describe("Custom email subject line"),
+  custom_message: z.string().optional().describe("Custom message body added to the account invite email"),
+});
+
+const AddCustomerTagsSchema = z.object({
+  customer_id: z.string().describe("Shopify customer ID"),
+  tags: z.array(z.string()).describe("Tags to add to the customer (existing tags are preserved)"),
 });
 
 // === Tool Definitions ===
